@@ -1,0 +1,62 @@
+{
+  "title": "Demo Messages",
+  "highlighted_senders": "JSON Tester",
+  "messages": [
+    {
+      "message_id": 1,
+      "timestamp_iso": "2026-05-10T10:00:00+09:00",
+      "sender": "JSON Tester",
+      "reply_to": null,
+      "text": "Hello! This is message 1 from the JSON file."
+    },
+    {
+      "message_id": 2,
+      "timestamp_iso": "2026-05-10T10:05:00+09:00",
+      "sender": "System",
+      "reply_to": null,
+      "text": "This is message 2. The JSON loader appears to be working correctly."
+    },
+    {
+      "message_id": 3,
+      "timestamp_iso": "2026-05-10T10:10:00+09:00",
+      "sender": "User A",
+      "reply_to": null,
+      "text": "Message 3 here! Checking the timeline order."
+    },
+    {
+      "message_id": 4,
+      "timestamp_iso": "2026-05-10T10:15:00+09:00",
+      "sender": "JSON Tester",
+      "reply_to": 3,
+      "text": "Replying to message 3. This is message 4."
+    },
+    {
+      "message_id": 5,
+      "timestamp_iso": "2026-05-10T10:20:00+09:00",
+      "sender": "System",
+      "reply_to": null,
+      "text": "Message 5, testing filtering capabilities."
+    },
+    {
+      "message_id": 6,
+      "timestamp_iso": "2026-05-10T10:25:00+09:00",
+      "sender": "User B",
+      "reply_to": null,
+      "text": "This is message 6. Almost at the end!"
+    },
+    {
+      "message_id": 7,
+      "timestamp_iso": "2026-05-10T10:30:00+09:00",
+      "sender": "JSON Tester",
+      "reply_to": null,
+      "text": "Message 7, another highlighted message."
+    },
+    {
+      "message_id": 8,
+      "timestamp_iso": "2026-05-10T10:35:00+09:00",
+      "sender": "System",
+      "reply_to": null,
+      "text": "Finally, message 8. The dummy JSON data is complete."
+    }
+  ]
+}
