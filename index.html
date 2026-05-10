@@ -235,7 +235,7 @@
 
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(var(--stat-columns, 4), 1fr);
       gap: 10px;
       margin-bottom: 24px;
     }
@@ -451,14 +451,37 @@
         white-space: normal;
       }
     }
+
+    #dropOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(247, 248, 245, 0.85);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: var(--accent-strong);
+      border: 6px dashed var(--accent-strong);
+      border-radius: 12px;
+      margin: 16px;
+    }
+
+    #dropOverlay h2 {
+      font-size: 2.2rem;
+      margin: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 
 <body>
   <header class="app-header">
     <div id="sourceEditor" class="source-editor">
-      <a href="https://github.com/SPACESODA/msg-reader" target="_blank" rel="noopener noreferrer" class="edit-btn">Star on Github</a>
-      <button id="editSourceBtn" class="edit-btn">Edit source</button>
+      <a href="https://github.com/SPACESODA/msg-reader" target="_blank" rel="noopener noreferrer" class="edit-btn">Star
+        on Github</a>
+      <button id="editSourceBtn" class="edit-btn">Drag file here or edit source</button>
       <form id="sourceForm" style="display: none;">
         <input type="text" id="sourceInput" placeholder="URL or path (.js or .json)" />
         <button type="submit">Load</button>
@@ -499,6 +522,10 @@
     <section class="timeline" id="timeline" aria-live="polite"></section>
   </main>
 
+  <div id="dropOverlay">
+    <h2>Drop a .js or .json file here</h2>
+  </div>
+
   <button id="toBottomBtn" class="floating-btn">To the bottom</button>
   <button id="toTopBtn" class="floating-btn">Back to top</button>
 
@@ -523,7 +550,9 @@
     const state = {
       data: null,
       messages: [],
-      highlightedSenders: [],
+      highlightedSenders: new Set(),
+      eventsAttached: false,
+      searchTimer: 0,
       filters: {
         query: "",
         sender: "",
@@ -564,21 +593,18 @@
     });
 
     function matches(message) {
-      const query = state.filters.query.trim().toLowerCase();
-
-      if (state.filters.highlightedOnly && !state.highlightedSenders.includes(message._sender)) return false;
+      if (state.filters.highlightedOnly && !state.highlightedSenders.has(message._sender)) return false;
       if (state.filters.sender && message._sender !== state.filters.sender) return false;
 
+      const query = state.filters.query;
       if (!query) return true;
-      return [
-        message.text,
-        message._sender,
-        String(message.message_id),
-        String(message.reply_to || ""),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+
+      return (
+        (message.text && message.text.toLowerCase().includes(query)) ||
+        (message._sender && message._sender.toLowerCase().includes(query)) ||
+        String(message.message_id).includes(query) ||
+        (message.reply_to && String(message.reply_to).includes(query))
+      );
     }
 
     function ordered(messages) {
@@ -591,25 +617,33 @@
     }
 
     function renderStats(filtered) {
-      const uniqueSenders = new Set(filtered.map((message) => message._sender)).size;
-      const days = new Set(filtered.map((message) => message._day)).size;
+      const uniqueSenders = new Set();
+      const days = new Set();
+      let highlightedCount = 0;
+
+      for (let i = 0; i < filtered.length; i++) {
+        const msg = filtered[i];
+        uniqueSenders.add(msg._sender);
+        days.add(msg._day);
+        if (state.highlightedSenders.has(msg._sender)) {
+          highlightedCount++;
+        }
+      }
 
       const cards = [
         ["Messages", filtered.length],
       ];
 
-      if (state.highlightedSenders.length > 0) {
-        const highlightedCount = filtered.filter((message) => state.highlightedSenders.includes(message._sender)).length;
+      if (state.highlightedSenders.size > 0) {
         cards.push(["Highlighted", highlightedCount]);
       }
 
       cards.push(
-        ["Senders", uniqueSenders],
-        ["Days", days]
+        ["Senders", uniqueSenders.size],
+        ["Days", days.size]
       );
 
-      els.stats.style.gridTemplateColumns = `repeat(${cards.length}, 1fr)`;
-
+      els.stats.style.setProperty("--stat-columns", cards.length);
       els.stats.replaceChildren(
         ...cards.map(([label, value]) => {
           const card = document.createElement("div");
@@ -634,11 +668,12 @@
     function renderMessage(message) {
       const node = els.template.content.firstElementChild.cloneNode(true);
       node.id = `msg-${message.message_id}`;
-      node.classList.toggle("highlighted", state.highlightedSenders.includes(message._sender));
+      node.classList.toggle("highlighted", state.highlightedSenders.has(message._sender));
 
       setText(node.querySelector(".sender"), message._sender);
-      setText(node.querySelector("time"), message._time);
-      node.querySelector("time").dateTime = message.timestamp_iso || "";
+      const timeNode = node.querySelector("time");
+      setText(timeNode, message._time);
+      timeNode.dateTime = message.timestamp_iso || "";
       setText(node.querySelector(".text"), message.text);
 
       const meta = node.querySelector(".meta");
@@ -723,9 +758,15 @@
     }
 
     function attachEvents() {
+      if (state.eventsAttached) return;
+      state.eventsAttached = true;
+
       els.search.addEventListener("input", () => {
-        state.filters.query = els.search.value;
-        renderTimeline();
+        window.clearTimeout(state.searchTimer);
+        state.searchTimer = window.setTimeout(() => {
+          state.filters.query = els.search.value.trim().toLowerCase();
+          renderTimeline();
+        }, 120);
       });
 
       els.sender.addEventListener("change", () => {
@@ -782,12 +823,17 @@
       });
     }
 
-    function init() {
+    function init(customData) {
       try {
-        if (typeof messagesData === "undefined") {
+        let activeData = customData || window.messagesData;
+        if (!activeData && typeof messagesData !== "undefined") {
+          activeData = messagesData;
+        }
+
+        if (!activeData) {
           throw new Error("messagesData is not defined. Ensure messages.js is loaded correctly.");
         }
-        state.data = messagesData;
+        state.data = activeData;
 
         state.messages = (state.data.messages || []).map(msg => {
           let ts = 0;
@@ -814,13 +860,22 @@
         document.querySelector("h1").textContent = title;
         document.title = `${title} - Messages Reader`;
 
-        state.highlightedSenders = state.data.highlighted_senders
-          ? state.data.highlighted_senders.split(",").map(s => s.trim())
-          : [];
-
-        els.highlightedFilterContainer.style.display = state.highlightedSenders.length > 0 ? "flex" : "none";
-        els.highlightedOnly.checked = false;
+        state.filters.sender = "";
+        state.filters.order = "oldest";
         state.filters.highlightedOnly = false;
+        els.search.value = "";
+        state.filters.query = "";
+        els.sender.value = "";
+        els.order.innerHTML = "<span>Oldest first</span>";
+
+        state.highlightedSenders = new Set(
+          state.data.highlighted_senders
+            ? state.data.highlighted_senders.split(",").map(s => s.trim())
+            : []
+        );
+
+        els.highlightedFilterContainer.style.display = state.highlightedSenders.size > 0 ? "flex" : "none";
+        els.highlightedOnly.checked = false;
 
         if (state.messages.length === 0) {
           els.summary.textContent = "0 messages";
@@ -879,33 +934,130 @@
       els.timeline.replaceChildren(empty);
     }
 
-    const timestamp = new Date().getTime();
-    const noCacheUrl = sourceUrl.includes('?')
-      ? `${sourceUrl}&_t=${timestamp}`
-      : `${sourceUrl}?_t=${timestamp}`;
-
-    if (sourceUrl.split('?')[0].toLowerCase().endsWith(".json")) {
-      fetch(noCacheUrl)
-        .then(res => {
-          if (!res.ok) throw new Error("HTTP error " + res.status);
-          return res.json();
-        })
-        .then(data => {
-          window.messagesData = data;
-          init();
-        })
-        .catch(err => {
-          showError(`Error: Failed to load JSON from ${sourceUrl}. ${err.message}`);
-        });
-    } else {
-      const script = document.createElement("script");
-      script.src = noCacheUrl;
-      script.onload = init;
-      script.onerror = () => {
-        showError(`Error: Failed to load JS from ${sourceUrl}. Please ensure the file exists and is accessible.`);
-      };
-      document.head.appendChild(script);
+    function normalizeSourceUrl(url) {
+      const trimmed = url.trim();
+      const parsed = new URL(trimmed, window.location.href);
+      const path = trimmed.split("?")[0].toLowerCase();
+      const allowedProtocols = new Set(["http:", "https:", "file:"]);
+      if (!allowedProtocols.has(parsed.protocol)) {
+        throw new Error("Unsupported source protocol. Please use a relative file path, http(s) URL, or local file URL.");
+      }
+      if (!path.endsWith(".json") && !path.endsWith(".js")) {
+        throw new Error("Unsupported source type. Please use a .json file or a trusted .js file.");
+      }
+      return trimmed;
     }
+
+    function parseMessagesJs(code) {
+      const assignment = code.match(/\b(?:const|let|var)?\s*messagesData\s*=\s*/);
+      if (!assignment) {
+        throw new Error("Could not find a messagesData assignment.");
+      }
+
+      const start = code.indexOf("{", assignment.index + assignment[0].length);
+      const end = code.lastIndexOf("}");
+      if (start === -1 || end === -1 || end <= start) {
+        throw new Error("Could not find the messagesData object.");
+      }
+
+      return JSON.parse(code.slice(start, end + 1));
+    }
+
+    const timestamp = new Date().getTime();
+    try {
+      sourceUrl = normalizeSourceUrl(sourceUrl);
+      const noCacheUrl = sourceUrl.includes('?')
+        ? `${sourceUrl}&_t=${timestamp}`
+        : `${sourceUrl}?_t=${timestamp}`;
+
+      if (sourceUrl.split('?')[0].toLowerCase().endsWith(".json")) {
+        fetch(noCacheUrl)
+          .then(res => {
+            if (!res.ok) throw new Error("HTTP error " + res.status);
+            return res.json();
+          })
+          .then(data => {
+            init(data);
+          })
+          .catch(err => {
+            showError(`Error: Failed to load JSON from ${sourceUrl}. ${err.message}`);
+          });
+      } else {
+        const script = document.createElement("script");
+        script.src = noCacheUrl;
+        script.onload = () => init();
+        script.onerror = () => {
+          showError(`Error: Failed to load JS from ${sourceUrl}. Please ensure the trusted file exists and is accessible.`);
+        };
+        document.head.appendChild(script);
+      }
+    } catch (err) {
+      showError(`Error: ${err.message}`);
+    }
+
+    // Drag and Drop functionality
+    const dropOverlay = document.getElementById("dropOverlay");
+    let dragCounter = 0;
+
+    window.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      dragCounter++;
+      dropOverlay.style.display = "flex";
+    });
+
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter === 0) {
+        dropOverlay.style.display = "none";
+      }
+    });
+
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      dropOverlay.style.display = "none";
+
+      if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+
+      const file = e.dataTransfer.files[0];
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith(".json")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            init(JSON.parse(event.target.result));
+            sourceInput.value = fileName;
+            els.summary.textContent = `Loaded ${fileName} via drag-and-drop`;
+          } catch (err) {
+            showError(`Error: Failed to parse dropped JSON file. ${err.message}`);
+          }
+        };
+        reader.onerror = () => showError("Error reading dropped file.");
+        reader.readAsText(file);
+      } else if (fileName.endsWith(".js")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = parseMessagesJs(event.target.result);
+            init(data);
+            sourceInput.value = fileName;
+            els.summary.textContent = `Loaded ${fileName} via drag-and-drop`;
+          } catch (err) {
+            showError(`Error: Failed to process dropped JS file. The file must assign strict JSON data to messagesData. ${err.message}`);
+          }
+        };
+        reader.onerror = () => showError("Error reading dropped file.");
+        reader.readAsText(file);
+      } else {
+        showError(`Error: Unsupported file type. Please drop a .js or .json file.`);
+      }
+    });
   </script>
 </body>
 

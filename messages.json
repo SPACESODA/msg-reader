@@ -1,5 +1,5 @@
 {
-  "title": "Demo Messages",
+  "title": "Messages Reader",
   "highlighted_senders": "JSON Tester",
   "messages": [
     {
@@ -7,7 +7,7 @@
       "timestamp_iso": "2026-05-10T10:00:00+09:00",
       "sender": "JSON Tester",
       "reply_to": null,
-      "text": "Hello! This is message 1 from the JSON file."
+      "text": "Hello! This is message 1 from the JSON file for demo."
     },
     {
       "message_id": 2,

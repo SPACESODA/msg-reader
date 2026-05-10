@@ -1,5 +1,5 @@
 const messagesData = {
-  "title": "Demo Messages",
+  "title": "Messages Reader",
   "highlighted_senders": "JS Tester",
   "messages": [
     {
@@ -7,7 +7,7 @@ const messagesData = {
       "timestamp_iso": "2026-05-10T11:00:00+09:00",
       "sender": "JS Tester",
       "reply_to": null,
-      "text": "Hello! This is message 1 from the JS file."
+      "text": "Hello! This is message 1 from the JS file for demo."
     },
     {
       "message_id": 2,
