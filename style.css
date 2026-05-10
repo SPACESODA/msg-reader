@@ -404,9 +404,21 @@
         width: 100%;
       }
 
-      .controls,
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .controls label:not(.checkbox) > span {
+        display: none;
+      }
+
+      .controls .search,
+      .controls label:has(#senderSelect) {
+        grid-column: 1 / -1;
+      }
+
       .stats {
-        grid-template-columns: 1fr;
+        display: none;
       }
 
       .message {
